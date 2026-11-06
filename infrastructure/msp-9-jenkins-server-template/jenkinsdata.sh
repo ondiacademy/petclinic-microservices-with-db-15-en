@@ -6,7 +6,7 @@ hostnamectl set-hostname jenkins-server
 # install git
 dnf install git -y
 # install java 11
-dnf install fontconfig java-17-amazon-corretto -y
+dnf install fontconfig java-21-amazon-corretto -y
 
 # install jenkins
 wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
