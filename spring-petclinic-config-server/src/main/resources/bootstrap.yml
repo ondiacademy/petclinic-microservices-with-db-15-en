@@ -5,6 +5,7 @@ spring:
       server:
         git:
           uri: https://github.com/ahmedserag2/petclinic-microservices-configs.git
+---
 spring:
   profiles: local
   cloud:
