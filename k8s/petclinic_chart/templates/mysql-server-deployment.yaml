@@ -25,7 +25,7 @@ spec:
             - name: MYSQL_DATABASE
               value: petclinic
             - name: MYSQL_ROOT_PASSWORD
-              value: petclinic
+              value: '{{ .Values.mysqlRootPassword }}'
           image: mysql:5.7
           name: mysql-server
           ports:

@@ -111,7 +111,9 @@ pipeline {
                 sh "helm s3 push --force petclinic_chart-${BUILD_NUMBER}.tgz stable-petclinic"
                 sh "envsubst < ansible/playbooks/dev-petclinic-deploy-template > ansible/playbooks/dev-petclinic-deploy.yaml"
                 sh "sleep 60"    
-                sh "ansible-playbook -i ./ansible/inventory/dev_stack_dynamic_inventory_aws_ec2.yaml ./ansible/playbooks/dev-petclinic-deploy.yaml"
+                withCredentials([string(credentialsId: 'sqlpass', variable: 'MYSQL_ROOT_PASSWORD')]) {
+                    sh 'ansible-playbook -i ./ansible/inventory/dev_stack_dynamic_inventory_aws_ec2.yaml ./ansible/playbooks/dev-petclinic-deploy.yaml'
+                }
             }
         }     
 
@@ -144,24 +146,44 @@ pipeline {
  }
 
     post {
-        always {
-            echo 'Deleting all local images'
-            sh 'docker image prune -af'
-            echo 'Delete the Image Repository on ECR'
-            sh """
-                aws ecr delete-repository \
-                  --repository-name ${APP_REPO_NAME} \
-                  --region ${AWS_REGION}\
-                  --force
+    always {
+        echo 'Deleting all local images'
+        sh 'docker image prune -af'
+
+        script {
+            def destroyInfra = false
+            try {
+                // Abort the wait after 30 min so the build doesn't hang forever
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Pipeline finished. Destroy all infrastructure (ECR repo, K8s cluster, key pair)?',
+                          ok: 'Yes, destroy everything'
+                }
+                destroyInfra = true
+            } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
+                // Clicked "Abort", or the timeout expired
+                echo 'Teardown skipped. Infrastructure left running.'
+            }
+
+            if (destroyInfra) {
+                echo 'Delete the Image Repository on ECR'
+                sh """
+                    aws ecr delete-repository \
+                      --repository-name ${APP_REPO_NAME} \
+                      --region ${AWS_REGION} \
+                      --force
                 """
-            echo 'Tear down the Kubernetes Cluster'
-            sh """
-            cd infrastructure/dev-k8s-terraform
-            terraform destroy -auto-approve -no-color
-            """
-            echo "Delete existing key pair using AWS CLI"
-            sh "aws ec2 delete-key-pair --region ${AWS_REGION} --key-name ${ANS_KEYPAIR}"
-            sh "rm -rf ${ANS_KEYPAIR}"
+
+                echo 'Tear down the Kubernetes Cluster'
+                sh """
+                    cd infrastructure/dev-k8s-terraform
+                    terraform destroy -auto-approve -no-color
+                """
+
+                echo 'Delete existing key pair using AWS CLI'
+                sh "aws ec2 delete-key-pair --region ${AWS_REGION} --key-name ${ANS_KEYPAIR}"
+                sh "rm -rf ${ANS_KEYPAIR}"
+            }
         }
     }
+}
 }
